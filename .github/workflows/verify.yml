@@ -1,0 +1,54 @@
+name: Verify strict-mode documentation
+on:
+  push:
+    branches:
+      - ci/verify-field-strictness
+permissions:
+  contents: read
+env:
+  UV_FROZEN: 'true'
+jobs:
+  verify:
+    name: Documentation ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: baseline
+            ref: 77fad186682d0c22cad713e34ca9b8b830362ed0
+          - version: patch
+            ref: 5b581c4bf28810b278f9f7e0a9ce2b090520d2f7
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: liorma6/pydantic
+          ref: ${{ matrix.ref }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
+        with:
+          python-version: '3.12'
+          enable-cache: false
+      - name: Install repository dependencies
+        run: uv sync --frozen --all-packages --all-extras --group docs --group testing-extra --group linting
+      - name: Run the strict-mode documentation examples
+        run: uv run --no-sync pytest tests/test_docs.py -k strict_mode -q
+      - name: Run existing strict-mode tests
+        run: uv run --no-sync pytest tests/test_main.py tests/test_config.py -k strict -q
+      - name: Check the changed Markdown file
+        run: uvx pre-commit run --files docs/concepts/strict_mode.md --show-diff-on-failure
+        env:
+          SKIP: no-commit-to-branch
+      - name: Lint Python sources
+        run: uv run --no-sync ruff check pydantic tests docs/plugins release pydantic-core/python pydantic-core/tests pydantic-core/wasm-preview/run_tests.py
+      - name: Check Python formatting
+        run: uv run --no-sync ruff format --check pydantic tests docs/plugins release pydantic-core/python pydantic-core/tests pydantic-core/wasm-preview/run_tests.py
+      - name: Prepare documentation imports
+        run: |
+          uv run --no-sync python -c 'import docs.plugins.main'
+          ln -s pydantic-core/python/pydantic_core pydantic_core
+          ln -s .venv/lib/python*/site-packages/pydantic_settings pydantic_settings
+          ln -s .venv/lib/python*/site-packages/pydantic_extra_types pydantic_extra_types
+      - name: Build all documentation in strict mode
+        run: PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}" uv run --no-sync mkdocs build --strict
