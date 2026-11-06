@@ -56,7 +56,7 @@ jobs:
       - name: Run the standard-library documentation examples
         run: uv run --no-sync pytest tests/test_docs.py -k standard_library_types -q
       - name: Run existing Decimal tests
-        run: uv run --no-sync pytest tests/types/test_decimal.py pydantic-core/tests/validators/test_decimal.py -q
+        run: uv run --no-sync pytest tests/types/test_decimal.py tests/pydantic_core/validators/test_decimal.py -q
       - name: Check the changed Markdown file
         run: uvx pre-commit run --files docs/api/standard_library_types.md --show-diff-on-failure
         env:
