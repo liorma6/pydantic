@@ -1,8 +1,8 @@
-name: Verify strict-mode documentation
+name: Verify Decimal input documentation
 on:
   push:
     branches:
-      - ci/verify-field-strictness
+      - ci/verify-decimal-input-docs
 permissions:
   contents: read
 env:
@@ -17,9 +17,9 @@ jobs:
       matrix:
         include:
           - version: baseline
-            ref: 77fad186682d0c22cad713e34ca9b8b830362ed0
+            ref: 9895381aa55eb2a1e74079f0b4fb745d1ea12d12
           - version: patch
-            ref: 5b581c4bf28810b278f9f7e0a9ce2b090520d2f7
+            ref: 8d0f893f761042358777c6e63cd54a1bae65f7b1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -32,12 +32,33 @@ jobs:
           enable-cache: false
       - name: Install repository dependencies
         run: uv sync --frozen --all-packages --all-extras --group docs --group testing-extra --group linting
-      - name: Run the strict-mode documentation examples
-        run: uv run --no-sync pytest tests/test_docs.py -k strict_mode -q
-      - name: Run existing strict-mode tests
-        run: uv run --no-sync pytest tests/test_main.py tests/test_config.py -k strict -q
+      - name: Reproduce Decimal constructor differences
+        run: |
+          uv run --no-sync python - <<'PY'
+          from decimal import Decimal
+          from pydantic import TypeAdapter, ValidationError
+
+          adapter = TypeAdapter(Decimal)
+          print(f"Decimal(1.1): {Decimal(1.1)!r}")
+          print(f"Validated 1.1: {adapter.validate_python(1.1)!r}")
+          assert adapter.validate_python(1.1) == Decimal('1.1')
+          assert adapter.validate_python(1.1) != Decimal(1.1)
+          for value in (True, False):
+              print(f"Decimal({value}): {Decimal(value)!r}")
+              try:
+                  adapter.validate_python(value)
+              except ValidationError as exc:
+                  assert exc.errors()[0]['type'] == 'decimal_type'
+                  print(f"Pydantic rejects {value} with decimal_type")
+              else:
+                  raise AssertionError(f"Unexpectedly accepted {value}")
+          PY
+      - name: Run the standard-library documentation examples
+        run: uv run --no-sync pytest tests/test_docs.py -k standard_library_types -q
+      - name: Run existing Decimal tests
+        run: uv run --no-sync pytest tests/types/test_decimal.py pydantic-core/tests/validators/test_decimal.py -q
       - name: Check the changed Markdown file
-        run: uvx pre-commit run --files docs/concepts/strict_mode.md --show-diff-on-failure
+        run: uvx pre-commit run --files docs/api/standard_library_types.md --show-diff-on-failure
         env:
           SKIP: no-commit-to-branch
       - name: Lint Python sources
